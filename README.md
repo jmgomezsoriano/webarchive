@@ -12,13 +12,16 @@ pip install requests selenium tqdm lxml urllib3
 
 Without arguments you can see the minium command help:
 
+```bash
 usage: webarchive.py [-h] [-b BROWSER] [-a ARCHIVE] [-d VALUE] [-l VALUE] [-s]
                      [-f] [--subdomain] [-v] [-H] [-o] [-u]
                      URL [URL ...]
 webarchive.py: error: the following arguments are required: URL
+```
 
 With the argument -h you can see more information:
 
+```bash
 usage: webarchive.py [-h] [-b BROWSER] [-a ARCHIVE] [-d VALUE] [-l VALUE] [-s]
                      [-f] [--subdomain] [-v] [-H] [-o] [-u]
                      URL [URL ...]
@@ -67,3 +70,4 @@ optional arguments:
                         en archive.
   -u, --update          Actualiza la lista de enlaces encontrados antes de
                         archivar la web. TODAVÍA NO ESTÁ IMPLEMENTADO
+```
