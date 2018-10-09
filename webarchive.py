@@ -1,3 +1,4 @@
+# Required modules: requests, selenium, tqdm, lxml, urllib3
 import sys
 import re
 import json
@@ -7,6 +8,7 @@ import lxml.html
 import hashlib
 import argparse
 
+from platform import system
 from requests.exceptions import SSLError
 from requests.exceptions import ConnectionError
 from urllib3.exceptions import NewConnectionError
@@ -18,6 +20,7 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+from waexceptions import WebArchiveException
 import traceback
 import requests
 import re
@@ -48,7 +51,7 @@ delay: int = 3
 archive = 'is'
 level =0
 
-# Calculate the app directory
+# Calculate the app configuration directory
 home = str(Path.joinpath(Path.home(), '.webarchive'))
 
 
@@ -295,13 +298,25 @@ def load_file(domain: str, file: str):
 
 def get_suitable_driver(browser):
     if browser == PHANTOM:
-        return webdriver.PhantomJS()
+        return webdriver.PhantomJS(get_driver_path('phantomjs'))
     elif browser == FIREFOX:
-        return webdriver.Firefox()
+        return webdriver.Firefox(get_driver_path('geckodriver'))
     elif browser == CHROME:
-        return webdriver.Chrome()
+        return webdriver.Chrome(get_driver_path('chormedriver'))
     else:
         raise InvalidArgumentException("The navegador '{0}' no está contemplado en esta versión".format(browser))
+
+
+def get_driver_path(filename: str):
+    os_name: str = system()
+    if os_name == 'Windows':
+        return 'selenium/windows/' + filename + '.exe'
+    if os_name == 'Linux':
+        return 'selenium/linux/' + filename
+
+    raise WebArchiveException("The Operating System '{0}' does not supported.".format(os_name))
+
+
 
 
 def delete_log_file(domain):
