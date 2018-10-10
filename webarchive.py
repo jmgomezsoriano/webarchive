@@ -4,7 +4,7 @@ import re
 import json
 from time import sleep
 import os.path
-import hashlib
+from hashlib import sha1
 import argparse
 from lxml import etree
 from lxml.html.clean import Cleaner
@@ -233,6 +233,7 @@ def get_clean_page(text):
     cleaner.javascript = True  # This is True because we want to activate the javascript filter
     cleaner.style = True  # This is True because we want to activate the styles & stylesheet filter
     cleaner.comments = True
+
     return html.fromstring(cleaner.clean_html(text),
                            parser=etree.HTMLParser(remove_blank_text=True, remove_comments=True, remove_pis=True,
                                                    strip_cdata=True))
@@ -247,10 +248,10 @@ def get_page_content(page):
 
 
 def exists_page_hash(url, text):
-    sha1 = hashlib.sha1(text.encode()).hexdigest()
-    if sha1 in sha1pages:
+    hash = sha1(text.encode()).hexdigest()
+    if hash in sha1pages:
         return True
-    sha1pages.add(sha1)
+    sha1pages.add(hash)
     return False
 
 
