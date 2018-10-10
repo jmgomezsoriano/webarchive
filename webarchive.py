@@ -374,9 +374,9 @@ def get_suitable_driver(browser):
 def get_driver_path(filename: str):
     os_name: str = system()
     if os_name == 'Windows':
-        return 'selenium/windows/' + filename + '.exe'
+        return os.path.join('selenium', 'windows', filename + '.exe')
     if os_name == 'Linux':
-        return 'selenium/linux/' + filename
+        return os.path.join('selenium', 'linux', filename)
 
     raise WebArchiveException("The Operating System '{0}' does not supported.".format(os_name))
 
