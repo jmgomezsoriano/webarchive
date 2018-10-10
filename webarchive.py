@@ -4,10 +4,12 @@ import re
 import json
 from time import sleep
 import os.path
-import lxml.html
 import hashlib
 import argparse
-
+from lxml import etree
+from lxml.html.clean import Cleaner
+from lxml import html
+from os import scandir, getcwd
 from platform import system
 from requests.exceptions import SSLError
 from requests.exceptions import ConnectionError
@@ -34,6 +36,7 @@ FIREFOX = "FIREFOX"
 CHROME = "CHROME"
 IS = "IS"
 ORG = "ORG"
+NONE = 'NONE'
 LINKS_FILE_NAME = "links.txt"
 LOG_FILE_NAME = "archived.log"
 MAXIMUM_ATTEMPTS = 5 # Number of intents
@@ -42,8 +45,9 @@ LONG_PERIOD_WAIT = 60 * 5 # Wait 5 minutes
 # Listas globales
 visited = set()
 pages = set()
-sha1pages = set()
+sha1pages:set = set()
 archived = set()
+repeated = set()
 
 # Default arguments
 verbose: bool = False
@@ -69,9 +73,14 @@ def parser_arguments() -> argparse.ArgumentParser:
                              'requiere interfaz y se ejecuta de forma oculta. '
                              'Los valores disponibles son {0},{1},{2}'.format(PHANTOM, CHROME, FIREFOX))
     parser.add_argument('-a', '--archive', metavar='ARCHIVE', type=str, default=IS,
-                        choices=[IS, ORG],
-                        help='La Web de archivo a utilizar, {0} para archive.is o {1} para archive.org. '
-                             'Por defecto se utilizará {0}. TODAVÍA NO ESTÁ IMPLEMENTADO'.format(IS, ORG))
+                        choices=[IS, ORG, NONE],
+                        help='La Web de archivo a utilizar, {0} para archive.is, {1} para archive.org o '
+                             '{2} para que no se archive en ningún sitio, solo rastree el sitio original. '
+                             'Por defecto se utilizará {0}. El método {1} TODAVÍA NO ESTÁ IMPLEMENTADO'.format(IS, ORG, NONE))
+    parser.add_argument('-S', '--save', metavar='FOLDER', type=str, default='',
+                        help='Directorio donde se guardarán las webs rastreadas. Debe estar vacío o solo contener '
+                             'archivos previamente rastreados por esta herramienta. En caso de no estar definido, '
+                             'no se almacenará ninguna web en local.')
     parser.add_argument('-d', '--delay', metavar='VALUE', type=int, default=3,
                         help='Tiempo de espera entre peticiones a archive.is en segundos. Por defecto 3.')
     parser.add_argument('-l', '--level', metavar='VALUE', type=int, default=-1,
@@ -199,24 +208,77 @@ def get_domain(url):
     return "{0.scheme}://{0.netloc}/".format(urlsplit(url))
 
 
-def search_urls_wget(url: str, subdomain: bool):
+def search_urls_wget(url: str, subdomain: bool, save_folder):
     response = requests.get(url)
     if not response.status_code == 200:
         return []
-    sha1 = hashlib.sha1(response.text.encode()).hexdigest()
-    if sha1 in sha1pages:
-        pages.remove(url)
-        return []
-    sha1pages.add(sha1)
+
     try:
-        page = lxml.html.fromstring(response.text)
+        page = get_clean_page(response.text)
+        page_text = get_page_content(page)
+
+        if exists_page_hash(url, page_text):
+            repeated.add(url)
+            pages.remove(url)
+            return []
+        if save_folder != '':
+            save_page(save_folder, page_text)
         base = get_domain(response.url, subdomain)
         return [build_url(base, x.get('href')) for x in page.xpath('//a') if x.get('href') is not None]
     except ValueError:
         return []
 
+def get_clean_page(text):
+    cleaner = Cleaner()
+    cleaner.javascript = True  # This is True because we want to activate the javascript filter
+    cleaner.style = True  # This is True because we want to activate the styles & stylesheet filter
+    cleaner.comments = True
+    return html.fromstring(cleaner.clean_html(text),
+                           parser=etree.HTMLParser(remove_blank_text=True, remove_comments=True, remove_pis=True,
+                                                   strip_cdata=True))
 
-def crawl_web(domain: str, driver, url, level: int, subdomain: bool):
+
+def get_page_content(page):
+    article = page.xpath('//body//text()')
+    if len(article) > 0:
+        return ' '.join(article)
+
+    return ' '.join(page.xpath('//body//text()'))
+
+
+def exists_page_hash(url, text):
+    sha1 = hashlib.sha1(text.encode()).hexdigest()
+    if sha1 in sha1pages:
+        return True
+    sha1pages.add(sha1)
+    return False
+
+
+def save_page(folder, text):
+    num = calculate_next_file_number(folder)
+    save_file(os.path.join(folder, num + '.txt'), text)
+
+
+def save_file(file_path, text):
+    file = open(file_path, 'w')
+    file.write(text)
+    file.close()
+
+
+def calculate_next_file_number(folder):
+    files = ls(folder)
+    files.sort()
+    if len(files) > 0:
+        file_name = files[-1].split('.')[0]
+        return '{:0>5}'.format(int(file_name)+1)
+    return '00001'
+
+
+def ls(path = getcwd()):
+    return [arch.name for arch in scandir(path) if arch.is_file()]
+
+
+def crawl_web(domain: str, driver, url, level:int, subdomain:bool, save:str):
     # Normalize the url
     if hash:
         pos = url.find('#')
@@ -230,9 +292,9 @@ def crawl_web(domain: str, driver, url, level: int, subdomain: bool):
     if url.endswith('/'):
         url = url[0:-1]
     # Check if the url has already been visited or it is an email link or it is from other domain
-    if url in visited or url.startswith("mailto:") or \
+    if url in visited or url in repeated or url.startswith("mailto:") or \
             not re.match(r"^[^:]+://((\w|-|_)+\.)*{0}(/.*|$)".format(domain), url):
-        return False
+        return
     try:
         # Get the link content type and crawl only the text ones
         response = requests.head(url)
@@ -242,12 +304,13 @@ def crawl_web(domain: str, driver, url, level: int, subdomain: bool):
         verbMsg("{0}: {1}".format(url, content_type))
         if content_type in ["text/html", "application/pdf", "application/rss+xml"]:
             pages.add(url)
-            print("\rEncontradas {0} páginas.".format(len(pages)), end='\n' if verbose else ' ')
+            print("\r{0} páginas visitadas de {1} encontradas y {2} repetidas.".format(
+                len(visited), len(pages), len(repeated)), end='\n' if verbose else ' ')
             if content_type in ["text/html"]:
-                for u in search_urls_wget(url, subdomain):
+                for u in search_urls_wget(url, subdomain, save):
                     if level != 0:
                         try:
-                            crawl_web(domain, driver, u, level - 1, subdomain)
+                            crawl_web(domain, driver, u, level - 1, subdomain, save)
                         except RecursionError:
                             print("Límite de recursión alcanzado con la url '{0}'.".format(u))
         elif content_type not in ["image/jpeg", "image/png"]:
@@ -317,8 +380,6 @@ def get_driver_path(filename: str):
     raise WebArchiveException("The Operating System '{0}' does not supported.".format(os_name))
 
 
-
-
 def delete_log_file(domain):
     if exists_file(domain, LOG_FILE_NAME):
         path = get_file_path(domain, LOG_FILE_NAME)
@@ -358,6 +419,9 @@ def main():
     delay = args.delay
     level = args.level
     hash = args.hash
+    print(args.save)
+    if args.save != '' and not os.path.exists(args.save):
+        os.makedirs(args.save)
 
     try:
         # For each url to crawl
@@ -374,7 +438,7 @@ def main():
             else:
                 # En caso contrario rastrea y almacena los links encontrados
                 print("Rastreando el dominio '{0}'. Esto puede tardar un rato.".format(domain))
-                crawl_web(domain, driver, url, level, args.subdomain)
+                crawl_web(domain, driver, url, level, args.subdomain, args.save)
                 store_links(domain, pages)
                 if args.force:
                     delete_log_file(domain)
@@ -387,6 +451,8 @@ def main():
                 for link in tqdm(pages, dynamic_ncols=True):
                     if args.archive == IS:
                         archive_is_page(driver, domain, link)
+                    if args.archive == NONE:
+                        pass
                     else:
                         raise InvalidArgumentException('En estos momentos solo está permitida la web de archive.is.')
 

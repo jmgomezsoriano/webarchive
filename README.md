@@ -32,6 +32,16 @@ archive.is.
 positional arguments:
   URL                   lista de URLs o dominios a rastrear.
 
+usage: webarchive.py [-h] [-b BROWSER] [-a ARCHIVE] [-S FOLDER] [-d VALUE]
+                     [-l VALUE] [-s] [-f] [--subdomain] [-v] [-H] [-o] [-u]
+                     URL [URL ...]
+
+Rastrea una o varias webs y archiva cada una de las páginas en la web
+archive.is.
+
+positional arguments:
+  URL                   lista de URLs o dominios a rastrear.
+
 optional arguments:
   -h, --help            show this help message and exit
   -b BROWSER, --browser BROWSER
@@ -40,9 +50,16 @@ optional arguments:
                         ejecuta de forma oculta. Los valores disponibles son
                         PHANTOM,CHROME,FIREFOX
   -a ARCHIVE, --archive ARCHIVE
-                        La Web de archivo a utilizar, IS para archive.is o ORG
-                        para archive.org. Por defecto se utilizará IS. TODAVÍA
-                        NO ESTÁ IMPLEMENTADO
+                        La Web de archivo a utilizar, IS para archive.is, ORG
+                        para archive.org o NONE para que no se archive en
+                        ningún sitio, solo rastree el sitio original. Por
+                        defecto se utilizará IS. El método ORG TODAVÍA NO ESTÁ
+                        IMPLEMENTADO
+  -S FOLDER, --save FOLDER
+                        Directorio donde se guardarán las webs rastreadas.
+                        Debe estar vacío o solo contener archivos previamente
+                        rastreados por esta herramienta. En caso de no estar
+                        definido, no se almacenará ninguna web en local.
   -d VALUE, --delay VALUE
                         Tiempo de espera entre peticiones a archive.is en
                         segundos. Por defecto 3.
@@ -70,4 +87,4 @@ optional arguments:
                         en archive.
   -u, --update          Actualiza la lista de enlaces encontrados antes de
                         archivar la web. TODAVÍA NO ESTÁ IMPLEMENTADO
-```
+
