@@ -452,7 +452,7 @@ def main():
                 for link in tqdm(pages, dynamic_ncols=True):
                     if args.archive == IS:
                         archive_is_page(driver, domain, link)
-                    if args.archive == NONE:
+                    elif args.archive == NONE:
                         pass
                     else:
                         raise InvalidArgumentException('En estos momentos solo está permitida la web de archive.is.')
