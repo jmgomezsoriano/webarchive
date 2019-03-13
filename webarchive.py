@@ -200,7 +200,7 @@ def build_url(base, path):
     if re.match("^[a-zA-Z]+:.*", path) is not None:
         return path
     elif path.startswith("/"):
-        return base + path[1:len(path)]
+        return (base if base.endswith('/') else base + '/') + path[1:len(path)]
     return base + path
 
 
@@ -225,8 +225,10 @@ def search_urls_wget(url: str, subdomain: bool, save_folder):
             save_page(save_folder, page_text)
         base = get_domain(response.url, subdomain)
         return [build_url(base, x.get('href')) for x in page.xpath('//a') if x.get('href') is not None]
-    except ValueError:
+    except ValueError as e:
+        print(e.msg, file=sys.stderr)
         return []
+
 
 def get_clean_page(text):
     cleaner = Cleaner()
@@ -292,6 +294,8 @@ def crawl_web(domain: str, driver, url, level:int, subdomain:bool, save:str):
         url = url[0:-1]
     if url.endswith('/'):
         url = url[0:-1]
+    if not url.startswith('https://') and not url.startswith('http://'):
+        url = 'http://' + url
     # Check if the url has already been visited or it is an email link or it is from other domain
     if url in visited or url in repeated or url.startswith("mailto:") or \
             not re.match(r"^[^:]+://((\w|-|_)+\.)*{0}(/.*|$)".format(domain), url):
