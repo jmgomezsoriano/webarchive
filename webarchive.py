@@ -211,6 +211,7 @@ def get_domain(url):
 def search_urls_wget(url: str, subdomain: bool, save_folder):
     response = requests.get(url)
     if not response.status_code == 200:
+        print("Error with code {0} extracting url '{1}'.".format(response.status_code, url))
         return []
 
     try:
