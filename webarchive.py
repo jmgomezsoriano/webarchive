@@ -194,8 +194,6 @@ def archive_is_page(driver, domain, url):
 
 def search_urls(driver, url):
     driver.get(url)
-    #### **** Parametrizar esto
-    sleep(3)
     return [x.get_attribute("href") for x in driver.find_elements_by_xpath("//a[@href]")]
 
 
@@ -212,6 +210,8 @@ def get_domain(url):
 
 
 def search_urls_wget(url: str, subdomain: bool, save_folder):
+    #### **** Parametrizar esto
+    sleep(3)
     response = requests.get(url)
     if not response.status_code == 200:
         print("Error with code {0} extracting url '{1}'.".format(response.status_code, url))
