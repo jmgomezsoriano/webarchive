@@ -194,6 +194,8 @@ def archive_is_page(driver, domain, url):
 
 def search_urls(driver, url):
     driver.get(url)
+    #### **** Parametrizar esto
+    sleep(3)
     return [x.get_attribute("href") for x in driver.find_elements_by_xpath("//a[@href]")]
 
 
