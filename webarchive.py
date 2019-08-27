@@ -7,6 +7,7 @@ import os.path
 from hashlib import sha1
 import argparse
 from lxml import etree
+from lxml.etree import ParserError
 from lxml.html.clean import Cleaner
 from lxml import html
 from os import scandir, getcwd
@@ -227,6 +228,12 @@ def search_urls_wget(url: str, subdomain: bool, save_folder):
         base = get_domain(response.url, subdomain)
         return [build_url(base, x.get('href')) for x in page.xpath('//a') if x.get('href') is not None]
     except ValueError as e:
+        print(e.msg, file=sys.stderr)
+        return []
+    except ParserError as e:
+        print(e.msg, file=sys.stderr)
+        return []
+    except XMLSyntaxError as e:
         print(e.msg, file=sys.stderr)
         return []
 
