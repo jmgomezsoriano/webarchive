@@ -7,7 +7,7 @@ import os.path
 from hashlib import sha1
 import argparse
 from lxml import etree
-from lxml.etree import ParserError
+from lxml.etree import ParserError, XMLSyntaxError
 from lxml.html.clean import Cleaner
 from lxml import html
 from os import scandir, getcwd
