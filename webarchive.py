@@ -230,13 +230,13 @@ def search_urls_wget(url: str, subdomain: bool, save_folder):
         base = get_domain(response.url, subdomain)
         return [build_url(base, x.get('href')) for x in page.xpath('//a') if x.get('href') is not None]
     except ValueError as e:
-        print(e.msg, file=sys.stderr)
+        print(e, file=sys.stderr)
         return []
     except ParserError as e:
-        print(e.msg, file=sys.stderr)
+        print(e, file=sys.stderr)
         return []
     except XMLSyntaxError as e:
-        print(e.msg, file=sys.stderr)
+        print(e, file=sys.stderr)
         return []
 
 
