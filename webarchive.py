@@ -214,7 +214,7 @@ def search_urls_wget(url: str, subdomain: bool, save_folder):
     sleep(3)
     response = requests.get(url)
     if not response.status_code == 200:
-        print("Error with code {0} extracting url '{1}'.".format(response.status_code, url))
+        print("Error with code {0} extracting url '{1}'.".format(response.status_code, url), file=sys.stderr)
         return []
 
     try:
@@ -315,7 +315,9 @@ def crawl_web(domain: str, driver, url, level:int, subdomain:bool, save:str):
         response = requests.head(url)
         # Add the url to the visited ones
         visited.add(url)
-        content_type = response.headers.get("Content-type").split(";")[0]
+        content_type = response.headers.get("Content-type")
+        if content_type:
+            content_type = content_type.split(";")[0]
         verbMsg("{0}: {1}".format(url, content_type))
         if content_type in ["text/html", "application/pdf", "application/rss+xml"]:
             pages.add(url)
