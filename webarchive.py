@@ -14,7 +14,7 @@ from requests.exceptions import ConnectionError
 from urllib3.exceptions import NewConnectionError
 from tqdm import tqdm
 from selenium import webdriver
-from selenium.common.exceptions import InvalidArgumentException, InvalidElementStateException
+from selenium.common.exceptions import InvalidArgumentException, InvalidElementStateException, WebDriverException
 from selenium.common.exceptions import NoSuchElementException
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
@@ -297,14 +297,17 @@ def load_file(domain: str, file: str):
 
 
 def get_suitable_driver(browser):
-    if browser == PHANTOM:
-        return webdriver.PhantomJS(get_driver_path('phantomjs'))
-    elif browser == FIREFOX:
-        return webdriver.Firefox(get_driver_path('geckodriver'))
-    elif browser == CHROME:
-        return webdriver.Chrome(get_driver_path('chormedriver'))
-    else:
-        raise InvalidArgumentException("The navegador '{0}' no está contemplado en esta versión".format(browser))
+    try:
+        if browser == PHANTOM:
+            return webdriver.PhantomJS(get_driver_path('phantomjs'))
+        elif browser == FIREFOX:
+            return webdriver.Firefox(get_driver_path('geckodriver'))
+        elif browser == CHROME:
+            return webdriver.Chrome(get_driver_path('chormedriver'))
+        else:
+            raise InvalidArgumentException("The navegador '{0}' no está contemplado en esta versión".format(browser))
+    except WebDriverException as e:
+        raise WebDriverException(f'The specific driver has to be in the path "{get_driver_path("")}": {str(e)}')
 
 
 def get_driver_path(filename: str):
@@ -349,54 +352,59 @@ def load_links(domain):
     pages -= archived
     return pages
 
+
 def main():
     # Parse command line arguments
     args = parser_arguments()
-    driver = get_suitable_driver(args.browser)
     global verbose, delay, archived, level, pages, hash
     verbose = args.verbose
     delay = args.delay
     level = args.level
     hash = args.hash
-
     try:
-        # For each url to crawl
-        for url in args.urls:
-            # Obtain the domain and crawl
-            domain = get_domain(url, args.subdomain)
+        driver = get_suitable_driver(args.browser)
+
+        try:
+
+            # For each url to crawl
+            for url in args.urls:
+                # Obtain the domain and crawl
+                domain = get_domain(url, args.subdomain)
 
 
-            # si el dominio ya ha sido rastreado, carga la lista de links obtenidas
-            if reuse_links(domain, args.force, args.update):
-                print("El dominio '{0}' ya ha sido rastreado. Se usará la lista previa de enlaces. "
-                      "Use -f para evitarlo o -u para actualizarla.".format(domain))
-                pages = load_links(domain)
+                # si el dominio ya ha sido rastreado, carga la lista de links obtenidas
+                if reuse_links(domain, args.force, args.update):
+                    print("El dominio '{0}' ya ha sido rastreado. Se usará la lista previa de enlaces. "
+                          "Use -f para evitarlo o -u para actualizarla.".format(domain))
+                    pages = load_links(domain)
+                else:
+                    # En caso contrario rastrea y almacena los links encontrados
+                    print("Rastreando el dominio '{0}'. Esto puede tardar un rato.".format(domain))
+                    crawl_web(domain, driver, url, level, args.subdomain)
+                    store_links(domain, pages)
+                    if args.force:
+                        delete_log_file(domain)
+                if not verbose:
+                    print()
+
+                if not args.only:
+                    # Archivo las páginas encontradas
+                    tqdm.ncols = 120
+                    for link in tqdm(pages, dynamic_ncols=True):
+                        if args.archive == IS:
+                            archive_is_page(driver, domain, link)
+                        else:
+                            raise InvalidArgumentException('En estos momentos solo está permitida la web de archive.is.')
+
+                showStatistics(domain)
+        except InvalidArgumentException as ex:
+            if args.verbose:
+                traceback.print_exc()
             else:
-                # En caso contrario rastrea y almacena los links encontrados
-                print("Rastreando el dominio '{0}'. Esto puede tardar un rato.".format(domain))
-                crawl_web(domain, driver, url, level, args.subdomain)
-                store_links(domain, pages)
-                if args.force:
-                    delete_log_file(domain)
-            if not verbose:
-                print()
-
-            if not args.only:
-                # Archivo las páginas encontradas
-                tqdm.ncols = 120
-                for link in tqdm(pages, dynamic_ncols=True):
-                    if args.archive == IS:
-                        archive_is_page(driver, domain, link)
-                    else:
-                        raise InvalidArgumentException('En estos momentos solo está permitida la web de archive.is.')
-
-            showStatistics(domain)
-    except InvalidArgumentException as ex:
-        if args.verbose:
-            traceback.print_exc()
-        else:
-            sys.stderr.write('ERROR DE ARGUMENTOS: {0}\n'.format(ex.msg))
-    driver.close()
+                sys.stderr.write('ERROR DE ARGUMENTOS: {0}\n'.format(ex.msg))
+        driver.close()
+    except WebDriverException as e:
+        print(str(e), file=sys.stderr)
 
 
 if __name__ == "__main__":
