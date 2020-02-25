@@ -20,6 +20,8 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+
+from argumentparser import ArgumentParser
 from waexceptions import WebArchiveException
 import traceback
 import requests
@@ -355,7 +357,7 @@ def load_links(domain):
 
 def main():
     # Parse command line arguments
-    args = parser_arguments()
+    args = ArgumentParser()
     global verbose, delay, archived, level, pages, hash
     verbose = args.verbose
     delay = args.delay
