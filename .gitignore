@@ -1,3 +1,5 @@
-geckodriver.log
-ghostdriver.log
+*.log
 venv
+.idea
+__pychache__
+selenium
