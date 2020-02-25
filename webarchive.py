@@ -7,13 +7,12 @@ import os.path
 import lxml.html
 import hashlib
 import argparse
-
+import gettext
 from platform import system
 from requests.exceptions import SSLError
 from requests.exceptions import ConnectionError
 from urllib3.exceptions import NewConnectionError
 from tqdm import tqdm
-from selenium import webdriver
 from selenium.common.exceptions import InvalidArgumentException, InvalidElementStateException, WebDriverException
 from selenium.common.exceptions import NoSuchElementException
 from selenium.common.exceptions import TimeoutException
@@ -29,19 +28,15 @@ import re
 from urllib.parse import urlsplit
 from pathlib import Path
 
-
-# Constantes
-PHANTOM = "PHANTOM"
-FIREFOX = "FIREFOX"
-CHROME = "CHROME"
-IS = "IS"
-ORG = "ORG"
+# Internationalization
+_ = gettext.gettext
+# Constants
 LINKS_FILE_NAME = "links.txt"
 LOG_FILE_NAME = "archived.log"
 MAXIMUM_ATTEMPTS = 5 # Number of intents
 LONG_PERIOD_WAIT = 60 * 5 # Wait 5 minutes
 
-# Listas globales
+# Global lists
 visited = set()
 pages = set()
 sha1pages = set()
@@ -55,53 +50,6 @@ level =0
 
 # Calculate the app configuration directory
 home = str(Path.joinpath(Path.home(), '.webarchive'))
-
-
-def parser_arguments() -> argparse.ArgumentParser:
-    """
-
-    :rtype: object
-    """
-    parser = argparse.ArgumentParser(
-        description='Rastrea una o varias webs y archiva cada una de las páginas en la web archive.is.')
-    parser.add_argument('urls', metavar='URL', type=str, nargs='+', help='lista de URLs o dominios a rastrear.')
-    parser.add_argument('-b', '--browser', metavar='BROWSER', type=str, default=PHANTOM,
-                        choices=[PHANTOM, CHROME, FIREFOX],
-                        help='El navegador utilizado en el rastreo. Por defecto es {0} que un navegador que no '
-                             'requiere interfaz y se ejecuta de forma oculta. '
-                             'Los valores disponibles son {0},{1},{2}'.format(PHANTOM, CHROME, FIREFOX))
-    parser.add_argument('-a', '--archive', metavar='ARCHIVE', type=str, default=IS,
-                        choices=[IS, ORG],
-                        help='La Web de archivo a utilizar, {0} para archive.is o {1} para archive.org. '
-                             'Por defecto se utilizará {0}. TODAVÍA NO ESTÁ IMPLEMENTADO'.format(IS, ORG))
-    parser.add_argument('-d', '--delay', metavar='VALUE', type=int, default=3,
-                        help='Tiempo de espera entre peticiones a archive.is en segundos. Por defecto 3.')
-    parser.add_argument('-l', '--level', metavar='VALUE', type=int, default=-1,
-                        help='El nivel máximo que debe alcanzar a partir de la página original, '
-                             '-1 si se quiere rastrear toda. Por defecto -1.')
-    parser.add_argument('-s', '--secure', default=False, action="store_true",
-                        help='Rastreo en modo seguro, mucho más lento pero permite rastrear webs formadas enteramente '
-                             'con javascript y realiza también esperas en la web a rastrear. TODAVÍA NO ESTÁ '
-                             'IMPLEMENTADO.')
-    parser.add_argument('-f', '--force', default=False, action="store_true",
-                        help='Vuelve a rastrear la web original y crear una nueva lista de enlaces. Tambien Fuerza un '
-                             'nuevo almacenamiento en archive.is aunque la web ya esté almacenada previamente.'
-                             'LA SEGUNDA PARTE TODAVÍA NO ESTÁ IMPLEMENTADA')
-    parser.add_argument('--subdomain', default=True, action="store_false",
-                        help='Si se activa, no también en los subdominos que encuentre. '
-                             'Útil para páginas en WordPress o que no tienen su propio dominio.')
-    parser.add_argument('-v', '--verbose', default=False, action="store_true",
-                        help='Muestra más información por pantalla.')
-    parser.add_argument('-H', '--hash', default=True, action="store_false",
-                        help='Sigue siempre los enlaces que tengan # o ?, útil para páginas con AngularJS o CMS que no '
-                             'tienen activado las URLs limpias.')
-    parser.add_argument('-o', '--only', default=False, action="store_true",
-                        help='Rastrea los enlaces de la página pero no los almacena en archive.')
-    parser.add_argument('-u', '--update', default=False, action="store_true",
-                        help='Actualiza la lista de enlaces encontrados antes de archivar la web. '
-                             'TODAVÍA NO ESTÁ IMPLEMENTADO')
-
-    return parser.parse_args()
 
 
 def wait(driver, delay = 3):
@@ -298,32 +246,6 @@ def load_file(domain: str, file: str):
     return lines
 
 
-def get_suitable_driver(browser):
-    try:
-        if browser == PHANTOM:
-            return webdriver.PhantomJS(get_driver_path('phantomjs'))
-        elif browser == FIREFOX:
-            return webdriver.Firefox(get_driver_path('geckodriver'))
-        elif browser == CHROME:
-            return webdriver.Chrome(get_driver_path('chormedriver'))
-        else:
-            raise InvalidArgumentException("The navegador '{0}' no está contemplado en esta versión".format(browser))
-    except WebDriverException as e:
-        raise WebDriverException(f'The specific driver has to be in the path "{get_driver_path("")}": {str(e)}')
-
-
-def get_driver_path(filename: str):
-    os_name: str = system()
-    if os_name == 'Windows':
-        return 'selenium/windows/' + filename + '.exe'
-    if os_name == 'Linux':
-        return 'selenium/linux/' + filename
-
-    raise WebArchiveException("The Operating System '{0}' does not supported.".format(os_name))
-
-
-
-
 def delete_log_file(domain):
     if exists_file(domain, LOG_FILE_NAME):
         path = get_file_path(domain, LOG_FILE_NAME)
@@ -364,10 +286,9 @@ def main():
     level = args.level
     hash = args.hash
     try:
-        driver = get_suitable_driver(args.browser)
+        driver = args.browser
 
         try:
-
             # For each url to crawl
             for url in args.urls:
                 # Obtain the domain and crawl
