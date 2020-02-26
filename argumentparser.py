@@ -1,7 +1,11 @@
 import argparse
 from typing import List
 import gettext
+from platform import system, machine
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException, InvalidArgumentException
+
+from waexceptions import WebArchiveException
 
 _ = gettext.gettext
 # Constants
@@ -10,6 +14,19 @@ FIREFOX = 'FIREFOX'
 CHROME = 'CHROME'
 IS = 'IS'
 ORG = 'ORG'
+# Real drivers names
+DRIVERS = {
+    PHANTOM: {
+        'driver_name': 'phantomjs',
+        'download': {
+            'windows': 'https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-windows.zip',
+            'macos': 'https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-macosx.zip',
+            'linux': 'https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2'
+        }
+    },
+    FIREFOX: 'geckodriver',
+    CHROME: 'chormedriver'
+}
 
 
 class ArgumentError(Exception):
@@ -110,27 +127,27 @@ class ArgumentParser(object):
 
         self._args = parser.parse_args()
 
-    @staticmethod
-    def get_suitable_driver(browser):
+    def get_suitable_driver(self, browser):
         try:
+            driver_path = self.get_driver_path(DRIVERS[browser])
             if browser == PHANTOM:
-                return webdriver.PhantomJS(get_driver_path('phantomjs'))
+                return webdriver.PhantomJS(driver_path)
             elif browser == FIREFOX:
-                return webdriver.Firefox(get_driver_path('geckodriver'))
+                return webdriver.Firefox(driver_path)
             elif browser == CHROME:
-                return webdriver.Chrome(get_driver_path('chormedriver'))
-            else:
-                raise InvalidArgumentException(
-                    "The navegador '{0}' no está contemplado en esta versión".format(browser))
+                return webdriver.Chrome(driver_path)
+        except KeyError as e:
+            raise ArgumentError("The navegador '{0}' no está contemplado en esta versión".format(browser))
         except WebDriverException as e:
-            raise WebDriverException(f'The specific driver has to be in the path "{get_driver_path("")}": {str(e)}')
+            raise WebDriverException(f'The specific driver has to be in the path "{driver_path}": {str(e)}')
 
     @staticmethod
     def get_driver_path(filename: str):
-        os_name: str = system()
-        if os_name == 'Windows':
-            return 'selenium/windows/' + filename + '.exe'
-        if os_name == 'Linux':
-            return 'selenium/linux/' + filename
-
-        raise WebArchiveException("The Operating System '{0}' does not supported.".format(os_name))
+        os_name: str = system().lower()
+        arch: str = machine()
+        if os_name == 'windows':
+            return f'selenium/windows/{filename}.exe'
+        if os_name == 'linux':
+            return f'selenium/{os_name}/{arch}/{filename}'¡
+        return f'selenium/{os_name}/{filename}'
+        # raise WebArchiveException(f'The Operating System "{os_name}" is not supported yet.')
