@@ -1,10 +1,18 @@
 import argparse
+import os
+import shutil
+from os.path import exists, dirname, join
+from os import makedirs
+from tempfile import mktemp, mkdtemp
 from typing import List
 import gettext
 from platform import system, machine
+
+import requests
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException, InvalidArgumentException
-
+from tqdm import tqdm
+import tarfile
 from waexceptions import WebArchiveException
 
 _ = gettext.gettext
@@ -21,7 +29,10 @@ DRIVERS = {
         'download': {
             'windows': 'https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-windows.zip',
             'macos': 'https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-macosx.zip',
-            'linux': 'https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2'
+            'linux': {
+                'x86_64': 'https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-x86_64.tar.bz2',
+                'i686': 'https://bitbucket.org/ariya/phantomjs/downloads/phantomjs-2.1.1-linux-i686.tar.bz2'
+            }
         }
     },
     FIREFOX: 'geckodriver',
@@ -31,6 +42,31 @@ DRIVERS = {
 
 class ArgumentError(Exception):
     pass
+
+
+def download_driver(driver_path: str, browser: str, os_name: str, arch: str):
+    folder = dirname(driver_path)
+    if not exists(folder):
+        makedirs(folder)
+    url = DRIVERS[browser]['download'][os_name][arch]
+    r = requests.get(url, stream=True)
+    if r.ok:
+        tmp = mkdtemp()
+        file_type, file_size = r.headers['content-type'], int(r.headers['Content-Length'])
+        t = tqdm(total=file_size, desc='Downloading driver')
+        tar_tmp = join(tmp, 'phantomjs.tar')
+        with open(tar_tmp, 'wb') as file:
+            for chunk in r:
+                t.update(len(chunk))
+                file.write(chunk)
+        t.close()
+        with tarfile.open(tar_tmp, "r") as tar:
+            tar.extract('phantomjs-2.1.1-linux-x86_64/bin/phantomjs', tmp)
+        shutil.move(join(tmp, 'phantomjs-2.1.1-linux-x86_64/bin/phantomjs'), driver_path)
+        shutil.rmtree(tmp)
+    else:
+        raise ValueError(f'The url "{url}" does not contain any driver to download')
+
 
 
 class ArgumentParser(object):
@@ -129,7 +165,12 @@ class ArgumentParser(object):
 
     def get_suitable_driver(self, browser):
         try:
-            driver_path = self.get_driver_path(DRIVERS[browser])
+            driver_file = DRIVERS[browser]['driver_name'] if isinstance(DRIVERS[browser], dict) else DRIVERS[browser]
+            os_name: str = system().lower()
+            arch: str = machine()
+            driver_path = self.get_driver_path(driver_file, os_name, arch)
+            if not exists(driver_path):
+                download_driver(driver_path, browser, os_name, arch)
             if browser == PHANTOM:
                 return webdriver.PhantomJS(driver_path)
             elif browser == FIREFOX:
@@ -142,12 +183,10 @@ class ArgumentParser(object):
             raise WebDriverException(f'The specific driver has to be in the path "{driver_path}": {str(e)}')
 
     @staticmethod
-    def get_driver_path(filename: str):
-        os_name: str = system().lower()
-        arch: str = machine()
+    def get_driver_path(fname: str, os_name: str, arch: str) -> str:
         if os_name == 'windows':
-            return f'selenium/windows/{filename}.exe'
+            return f'selenium/windows/{fname}.exe'
         if os_name == 'linux':
-            return f'selenium/{os_name}/{arch}/{filename}'¡
-        return f'selenium/{os_name}/{filename}'
+            return f'selenium/{os_name}/{arch}/{fname}'
+        return f'selenium/{os_name}/{fname}'
         # raise WebArchiveException(f'The Operating System "{os_name}" is not supported yet.')
