@@ -9,7 +9,9 @@ import hashlib
 import argparse
 import gettext
 from platform import system
-from requests.exceptions import SSLError
+
+from requests import Response
+from requests.exceptions import SSLError, ReadTimeout
 from requests.exceptions import ConnectionError
 from urllib3.exceptions import NewConnectionError
 from tqdm import tqdm
@@ -20,7 +22,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 
-from argumentparser import ArgumentParser
+from argumentparser import ArgumentParser, IS
 from waexceptions import WebArchiveException
 import traceback
 import requests
@@ -33,8 +35,9 @@ _ = gettext.gettext
 # Constants
 LINKS_FILE_NAME = "links.txt"
 LOG_FILE_NAME = "archived.log"
-MAXIMUM_ATTEMPTS = 5 # Number of intents
+MAXIMUM_ATTEMPTS = 20 # Number of intents
 LONG_PERIOD_WAIT = 60 * 5 # Wait 5 minutes
+TIMEOUT = 3
 
 # Global lists
 visited = set()
@@ -98,14 +101,14 @@ def archive_is_page(driver, domain, url):
         verbMsg("Escribiendo la dirección.")
         elem.send_keys(url)
         verbMsg("Buscando el botón.")
-        elem = driver.find_element_by_xpath("//input[@value = 'archivar']")
+        elem = driver.find_element_by_xpath("//input[@value = 'save']")
         verbMsg("Pulsando el botón...")
         elem.click()
         verbMsg("Esperando a la página de loading para {0}".format(url))
         count = 0
-        while not wait_for_xpath(driver, "//input[@value = 'guardar la página']", 1) \
-                and not wait_for_xpath(driver, "/html/body/div[span = 'Loading.']", 1) \
-                and not wait_for_xpath(driver, "//td[a = 'Página']", 1) and count < MAXIMUM_ATTEMPTS:
+        while not wait_for_xpath(driver, "//input[@value = 'guardar la página']", 3) \
+                and not wait_for_xpath(driver, "/html/body/div[span = 'Loading.']", 3) \
+                and not wait_for_xpath(driver, "//td[a = 'Página']", 3) and count < MAXIMUM_ATTEMPTS:
             count += 1
             verbMsg("Waitted {0} of {1} seconds.".format(count * 3, MAXIMUM_ATTEMPTS * 3))
         if count == MAXIMUM_ATTEMPTS:
@@ -118,7 +121,7 @@ def archive_is_page(driver, domain, url):
                 store_link(domain, url)
             else:
                 verbMsg("Esperando a la página almacenada")
-                if wait_for_xpath(driver, "//td[a = 'Página']", 60):
+                if wait_for_xpath(driver, '//div[@id="HEADER"]', 120):
                     verbMsg("Page succesfuly add {0}".format(url))
                     store_link(domain, url)
                 else:
@@ -145,13 +148,15 @@ def build_url(base, path):
     return base + path
 
 
-def get_domain(url):
+def get_domain(url: str):
     return "{0.scheme}://{0.netloc}/".format(urlsplit(url))
 
 
 def search_urls_wget(url: str, subdomain: bool):
-    response = requests.get(url)
-    if not response.status_code == 200:
+
+    response = timeout(url, TIMEOUT)
+
+    if not response or not response.status_code == 200:
         return []
     sha1 = hashlib.sha1(response.text.encode()).hexdigest()
     if sha1 in sha1pages:
@@ -164,6 +169,15 @@ def search_urls_wget(url: str, subdomain: bool):
         return [build_url(base, x.get('href')) for x in page.xpath('//a') if x.get('href') is not None]
     except ValueError:
         return []
+
+
+def timeout(url: str, timeout: float = TIMEOUT, func=requests.get, intents: int = 3) -> Response:
+    for i in range(intents):
+        try:
+            return func(url, timeout=timeout * (i * 30 + 1))
+        except ReadTimeout:
+            print(f'Timeout {url}: trying again. Left {intents - i - 1} intents.', file=sys.stderr)
+    return None
 
 
 def crawl_web(domain: str, driver, url, level: int, subdomain: bool):
@@ -185,32 +199,33 @@ def crawl_web(domain: str, driver, url, level: int, subdomain: bool):
         return False
     try:
         # Get the link content type and crawl only the text ones
-        response = requests.head(url)
-        # Add the url to the visited ones
-        visited.add(url)
-        content_type = response.headers.get("Content-type").split(";")[0]
-        verbMsg("{0}: {1}".format(url, content_type))
-        if content_type in ["text/html", "application/pdf", "application/rss+xml"]:
-            pages.add(url)
-            print("\rEncontradas {0} páginas.".format(len(pages)), end='\n' if verbose else ' ')
-            if content_type in ["text/html"]:
-                for u in search_urls_wget(url, subdomain):
-                    if level != 0:
-                        try:
-                            crawl_web(domain, driver, u, level - 1, subdomain)
-                        except RecursionError:
-                            print("Límite de recursión alcanzado con la url '{0}'.".format(u))
-        elif content_type not in ["image/jpeg", "image/png"]:
-            print("Content type '{0}' have not recognized.".format(content_type), file=sys.stderr)
-        else:
-            verbMsg("Ignoring '{0}' content type.".format(content_type))
+        response = timeout(url, TIMEOUT, requests.head)
+        # response = requests.head(url, timeout=TIMEOUT)
+        if response and response.ok:
+            # Add the url to the visited ones
+            visited.add(url)
+            content_type = response.headers.get("Content-type").split(";")[0]
+            verbMsg("{0}: {1}".format(url, content_type))
+            if content_type in ["text/html", "application/pdf", "application/rss+xml"]:
+                pages.add(url)
+                print("\rEncontradas {0} páginas.".format(len(pages)), end='\n' if verbose else ' ')
+                if content_type in ["text/html"]:
+                    for u in search_urls_wget(url, subdomain):
+                        if level != 0:
+                            try:
+                                crawl_web(domain, driver, u, level - 1, subdomain)
+                            except RecursionError:
+                                print("Límite de recursión alcanzado con la url '{0}'.".format(u))
+            elif content_type not in ["image/jpeg", "image/png"]:
+                print("Content type '{0}' have not recognized.".format(content_type), file=sys.stderr)
+            else:
+                verbMsg("Ignoring '{0}' content type.".format(content_type))
     except SSLError as ex:
         print("The URL '{0}' has not be able to crawl caused by a SSL Error: {1}".format(url, str(ex)), file=sys.stderr)
     except ConnectionError as ex:
         print("The URL '{0}' has not be able to crawl caused by a Connection Error: {1}".format(url, str(ex)), file=sys.stderr)
     except NewConnectionError as ex:
         print("The URL '{0}' has not be able to crawl caused by a New Connection Error {1}.".format(url, str(ex)), file=sys.stderr)
-
 
 def get_file_path(domain: str, file: str):
     dir = get_domain_dir(domain)
@@ -293,8 +308,6 @@ def main():
             for url in args.urls:
                 # Obtain the domain and crawl
                 domain = get_domain(url, args.subdomain)
-
-
                 # si el dominio ya ha sido rastreado, carga la lista de links obtenidas
                 if reuse_links(domain, args.force, args.update):
                     print("El dominio '{0}' ya ha sido rastreado. Se usará la lista previa de enlaces. "
