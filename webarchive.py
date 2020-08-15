@@ -13,7 +13,7 @@ from platform import system
 from requests import Response
 from requests.exceptions import SSLError, ReadTimeout
 from requests.exceptions import ConnectionError
-from urllib3.exceptions import NewConnectionError
+from urllib3.exceptions import NewConnectionError, MaxRetryError, ProtocolError
 from tqdm import tqdm
 from selenium.common.exceptions import InvalidArgumentException, InvalidElementStateException, WebDriverException
 from selenium.common.exceptions import NoSuchElementException
@@ -35,7 +35,7 @@ _ = gettext.gettext
 # Constants
 LINKS_FILE_NAME = "links.txt"
 LOG_FILE_NAME = "archived.log"
-MAXIMUM_ATTEMPTS = 20 # Number of intents
+MAXIMUM_ATTEMPTS = 5 # Number of intents
 LONG_PERIOD_WAIT = 60 * 5 # Wait 5 minutes
 TIMEOUT = 3
 
@@ -63,7 +63,7 @@ def wait_for_xpath(driver, xpath, timeout = 5):
     try:
         elem = EC.presence_of_element_located((By.XPATH, xpath))
         WebDriverWait(driver, timeout).until(elem)
-    except TimeoutException:
+    except (TimeoutException, MaxRetryError):
         return False
     return True
 
@@ -132,6 +132,10 @@ def archive_is_page(driver, domain, url):
         wait_for_xpath(driver, "/inexistente_path", LONG_PERIOD_WAIT)
     except InvalidElementStateException:
         verbMsg("La página principal de archive.is no se carga, esperando {0} segundos.".format(LONG_PERIOD_WAIT))
+        wait_for_xpath(driver, "/inexistente_path", LONG_PERIOD_WAIT)
+    except ProtocolError as e:
+        verbMsg(f'La página principal de archive.is ha tenido el siguiente problema: {str(e)}\n'
+                f'Esperando {LONG_PERIOD_WAIT} segundos.')
         wait_for_xpath(driver, "/inexistente_path", LONG_PERIOD_WAIT)
 
 
@@ -301,44 +305,52 @@ def main():
     level = args.level
     hash = args.hash
     try:
-        driver = args.browser
+        finished = False
+        while not finished:
+            try:
+                driver = args.browser
 
-        try:
-            # For each url to crawl
-            for url in args.urls:
-                # Obtain the domain and crawl
-                domain = get_domain(url, args.subdomain)
-                # si el dominio ya ha sido rastreado, carga la lista de links obtenidas
-                if reuse_links(domain, args.force, args.update):
-                    print("El dominio '{0}' ya ha sido rastreado. Se usará la lista previa de enlaces. "
-                          "Use -f para evitarlo o -u para actualizarla.".format(domain))
-                    pages = load_links(domain)
-                else:
-                    # En caso contrario rastrea y almacena los links encontrados
-                    print("Rastreando el dominio '{0}'. Esto puede tardar un rato.".format(domain))
-                    crawl_web(domain, driver, url, level, args.subdomain)
-                    store_links(domain, pages)
-                    if args.force:
-                        delete_log_file(domain)
-                if not verbose:
-                    print()
-
-                if not args.only:
-                    # Archivo las páginas encontradas
-                    tqdm.ncols = 120
-                    for link in tqdm(pages, dynamic_ncols=True):
-                        if args.archive == IS:
-                            archive_is_page(driver, domain, link)
+                try:
+                    # For each url to crawl
+                    for url in args.urls:
+                        # Obtain the domain and crawl
+                        domain = get_domain(url, args.subdomain)
+                        # si el dominio ya ha sido rastreado, carga la lista de links obtenidas
+                        if reuse_links(domain, args.force, args.update):
+                            print("El dominio '{0}' ya ha sido rastreado. Se usará la lista previa de enlaces. "
+                                  "Use -f para evitarlo o -u para actualizarla.".format(domain))
+                            pages = load_links(domain)
                         else:
-                            raise InvalidArgumentException('En estos momentos solo está permitida la web de archive.is.')
+                            # En caso contrario rastrea y almacena los links encontrados
+                            print("Rastreando el dominio '{0}'. Esto puede tardar un rato.".format(domain))
+                            crawl_web(domain, driver, url, level, args.subdomain)
+                            store_links(domain, pages)
+                            if args.force:
+                                delete_log_file(domain)
+                        if not verbose:
+                            print()
 
-                showStatistics(domain)
-        except InvalidArgumentException as ex:
-            if args.verbose:
-                traceback.print_exc()
-            else:
-                sys.stderr.write('ERROR DE ARGUMENTOS: {0}\n'.format(ex.msg))
-        driver.close()
+                        if not args.only:
+                            # Archivo las páginas encontradas
+                            tqdm.ncols = 120
+                            for link in tqdm(pages, dynamic_ncols=True):
+                                if args.archive == IS:
+                                    archive_is_page(driver, domain, link)
+                                else:
+                                    raise InvalidArgumentException('En estos momentos solo está permitida la web de archive.is.')
+
+                        showStatistics(domain)
+                except InvalidArgumentException as ex:
+                    if args.verbose:
+                        traceback.print_exc()
+                    else:
+                        sys.stderr.write('ERROR DE ARGUMENTOS: {0}\n'.format(ex.msg))
+                driver.close()
+                finished = True
+            except MaxRetryError as e:
+                verbMsg(f'La página principal de archive.is ha tenido el siguiente problema: {str(e)}\n'
+                        f'Esperando {LONG_PERIOD_WAIT} segundos y reiniciando el driver.')
+                sleep(LONG_PERIOD_WAIT)
     except WebDriverException as e:
         print(str(e), file=sys.stderr)
 
