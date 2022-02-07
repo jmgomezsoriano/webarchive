@@ -1,7 +1,7 @@
 import argparse
 import os
 import shutil
-from os.path import exists, dirname, join
+from os.path import exists, dirname, join, basename
 from os import makedirs
 from tempfile import mktemp, mkdtemp
 from typing import List
@@ -35,7 +35,16 @@ DRIVERS = {
             }
         }
     },
-    FIREFOX: 'geckodriver',
+    FIREFOX: {
+        'driver_name': 'geckodriver',
+        'download': {
+            'windows': 'https://github.com/mozilla/geckodriver/releases/download/v0.30.0/geckodriver-v0.30.0-win32.zip',
+            'linux': {
+                'x86_64': 'https://github.com/mozilla/geckodriver/releases/download/v0.30.0/geckodriver-v0.30.0-linux64.tar.gz',
+                'i686': 'https://github.com/mozilla/geckodriver/releases/download/v0.30.0/geckodriver-v0.30.0-linux32.tar.gz'
+            }
+        }
+    },
     CHROME: 'chormedriver'
 }
 
@@ -174,10 +183,14 @@ class ArgumentParser(object):
             if browser == PHANTOM:
                 return webdriver.PhantomJS(driver_path)
             elif browser == FIREFOX:
-                return webdriver.Firefox(driver_path)
+                # options = Options()
+                # options.headless = True
+                # driver = webdriver.Firefox(options=options,
+                #                            executable_path=r'C:\Utility\BrowserDrivers\geckodriver.exe')
+                return webdriver.Firefox(firefox_binary='/usr/bin/firefox')
             elif browser == CHROME:
                 return webdriver.Chrome(driver_path)
-        except KeyError as e:
+        except KeyError:
             raise ArgumentError("The navegador '{0}' no está contemplado en esta versión".format(browser))
         except WebDriverException as e:
             raise WebDriverException(f'The specific driver has to be in the path "{driver_path}": {str(e)}')

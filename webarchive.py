@@ -4,6 +4,8 @@ import re
 import json
 from time import sleep
 import os.path
+from typing import Optional
+
 import lxml.html
 import hashlib
 import argparse
@@ -11,7 +13,7 @@ import gettext
 from platform import system
 
 from requests import Response
-from requests.exceptions import SSLError, ReadTimeout
+from requests.exceptions import SSLError, ReadTimeout, InvalidSchema
 from requests.exceptions import ConnectionError
 from urllib3.exceptions import NewConnectionError, MaxRetryError, ProtocolError
 from tqdm import tqdm
@@ -108,11 +110,15 @@ def archive_is_page(driver, domain, url):
         count = 0
         while not wait_for_xpath(driver, "//input[@value = 'guardar la página']", 3) \
                 and not wait_for_xpath(driver, "/html/body/div[span = 'Loading.']", 3) \
-                and not wait_for_xpath(driver, "//td[a = 'Página']", 3) and count < MAXIMUM_ATTEMPTS:
+                and not wait_for_xpath(driver, "//td[a = 'Página']", 3) \
+                and not wait_for_xpath(driver, '//center[id = "DIVALREADY2"]') and count < MAXIMUM_ATTEMPTS:
             count += 1
             verbMsg("Waitted {0} of {1} seconds.".format(count * 3, MAXIMUM_ATTEMPTS * 3))
+            print('\007')
         if count == MAXIMUM_ATTEMPTS:
             verbMsg("Timeout to add: {0}\n".format(url))
+        # elif driver.find_element_by_xpath('//center[id="DIVALREADY2"]'):
+        #     store_link(domain, url)
         else:
             wait_for_xpath(driver, "/inexistente_path", delay)
             #driver.implicitly_wait(delay)
@@ -175,12 +181,14 @@ def search_urls_wget(url: str, subdomain: bool):
         return []
 
 
-def timeout(url: str, timeout: float = TIMEOUT, func=requests.get, intents: int = 3) -> Response:
+def timeout(url: str, timeout: float = TIMEOUT, func=requests.get, intents: int = 3) -> Optional[Response]:
     for i in range(intents):
         try:
             return func(url, timeout=timeout * (i * 30 + 1))
         except ReadTimeout:
             print(f'Timeout {url}: trying again. Left {intents - i - 1} intents.', file=sys.stderr)
+        except InvalidSchema as e:
+            print(str(e))
     return None
 
 
